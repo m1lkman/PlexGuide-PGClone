@@ -67,6 +67,8 @@ while [ 1 ]; do
         --drive-chunk-size=128M \
         "$dlpath/pgblitz/upload" "$keytransfer:/"
 
+  echo "** Waiting 1 Minute To Restart Again" > /opt/appdata/plexguide/pgblitz.log
+  sleep 60
 # Remove empty directories (MrWednesday)
 find "$dlpath/move/" -mindepth 1 -mmin +30 -type d -empty -delete
 find "$dlpath/pgblitz/upload" -mindepth 1 -mmin +5 -type d -empty -delete

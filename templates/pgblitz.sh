@@ -69,7 +69,7 @@ while [ 1 ]; do
         "$dlpath/pgblitz/upload" "$keytransfer:/"
 
   let "cyclecount++"
-  echo "Cycle $cyclecount - Sleeping for 1 Minute" > /opt/appdata/plexguide/pgblitz.log
+  echo "Cycle $cyclecount - Sleeping for 1 Minute" >> /opt/appdata/plexguide/pgblitz.log
   sleep 60
 # Remove empty directories (MrWednesday)
 find "$dlpath/move/" -mindepth 1 -mmin +30 -type d -empty -delete

@@ -57,47 +57,40 @@ if [[ -n $LOCALFILES ]]; then
 	done
 	readarray -t MEDIAFOLDERS < <(printf "%s\n" "${MEDIAFOLDERS[@]}" | sort -u)
 	log "${#MEDIAFOLDERS[@]} Unique folder/s found for Plex Media Scanner"
-		for MEDIAFOLDER in "${MEDIAFOLDERS[@]}"
-		do
-			case $MEDIAFOLDER in
-			*/AudioBooks/*)
-				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${AUDIOBOOKSECTION}' --directory '${MEDIAFOLDER}'"
-			;;
-			*/eBooks/*)
-				log "Skip scanning folder $MEDIAFOLDER"
-				continue
-			;;
-			*/Comics/*)
-				log "Skip scanning folder $MEDIAFOLDER"
-				continue
-			;;
-			*/Movies/*)
-				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MOVIESECTION}' --directory '${MEDIAFOLDER}'"
-			;;
-			*/Music/*)
-				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MUSICSECTION}' --directory '${MEDIAFOLDER}'"
-			;;
-			*/Photos/*)
-				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER."
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${PHOTOSECTION}' --directory '${MEDIAFOLDER}'"
-			;;
-			*/Television/*)
-				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${TVSECTION}' --directory '${MEDIAFOLDER}'"
-			;;
-			*)
-				log "Skip scanning folder $MEDIAFOLDER"
-				continue
-			;;
-		esac
-		if [ $? -eq 0 ]; then
-			log "SUCCESS: Plex Media Scanner"
+	for MEDIAFOLDER in "${MEDIAFOLDERS[@]}"
+	do
+		if [[ $MEDIAFOLDER == "$library_root/Movies/"* ]] && [[ -n $MOVIESECTION ]]; then
+			log "Refreshing Movies folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MOVIESECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $MEDIAFOLDER == "$library_root/Movies 4K/"* ]] && [[ -n $MOVIE4KSECTION ]] ; then
+			log "Refreshing Movies 4K folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MOVIE4KSECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $MEDIAFOLDER == "$library_root/Music/"* ]] && [[ -n $MUSICSECTION ]] ; then
+			log "Refreshing Music folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MUSICSECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $MEDIAFOLDER == "$library_root/Television/"* ]] && [[ -n $TVSECTION ]] ; then
+			log "Refreshing Television folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${TVSECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $MEDIAFOLDER == "$library_root/Television 4K/"* ]] && [[ -n $TV4KSECTION ]] ; then
+			log "Refreshing Television 4K folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${TV4KSECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $MEDIAFOLDER == "$library_root/Audiobooks/"* ]] && [[ -n $AUDIOBOOKSECTION ]] ; then
+			log "Refreshing Audiobooks folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${AUDIOBOOKSECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $MEDIAFOLDER == "$library_root/Photos/"* ]] && [[ -n $PHOTOSECTION ]] ; then
+			log "Refreshing Photos folder: $MEDIAFOLDER" | tee -a "$LOGFILE"
+			docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${PHOTOSECTION}' --directory '${MEDIAFOLDER}'"
+		fi
+		if [[ $? -eq 0 ]]; then
+			log "SUCCESS: Plex Media Scanner successful"
 		else
-			log "ERROR: Plex Media Scanner ERROR: $?"
-			#exit 1
+			log "ERROR: Error executing Plex Media Scanner ERROR: $?"
 		fi
 	done
 

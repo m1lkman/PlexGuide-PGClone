@@ -20,6 +20,8 @@ sleep 10
 while true
 do
 
+STARTLOOP=$(date)
+TIMESTAMP=`date +%Y-%m-%d_%H-%M-%S`
 SECTION="MOVE"
 dlpath=$(cat /var/plexguide/server.hd.path)
 
@@ -41,7 +43,7 @@ rclone moveto "$dlpath/downloads/" "$dlpath/move/" \
 --exclude=".*"
 
 SECTION="SCAN"
-readarray -t LOCALFILES < <(find "$dlpath/move/" -mindepth 1 -type f -cmin +0.233 -not -newerct "$START" -not -iname '*.partial~' -not -iname '*_HIDDEN~' -not -iname '*.QTFS' -not -iname '*unionfs-.fuse*' -not -iname '*unionfs*' -not -iname '*.DS_STORE')
+readarray -t LOCALFILES < <(find "$dlpath/move/" -mindepth 1 -type f -cmin +0.233 -not -newerct "$STARTLOOP" -not -iname '*.partial~' -not -iname '*_HIDDEN~' -not -iname '*.QTFS' -not -iname '*unionfs-.fuse*' -not -iname '*unionfs*' -not -iname '*.DS_STORE')
 log "${#LOCALFILES[@]} local file/s found for Plex Media Scanner"
 if [[ -n $LOCALFILES ]]; then
 	# Create empty array
@@ -60,7 +62,7 @@ if [[ -n $LOCALFILES ]]; then
 			case $MEDIAFOLDER in
 			*/AudioBooks/*)
 				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section 6 --directory '${MEDIAFOLDER}'"
+				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${AUDIOBOOKSECTION}' --directory '${MEDIAFOLDER}'"
 			;;
 			*/eBooks/*)
 				log "Skip scanning folder $MEDIAFOLDER"
@@ -72,19 +74,19 @@ if [[ -n $LOCALFILES ]]; then
 			;;
 			*/Movies/*)
 				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section 1 --directory '${MEDIAFOLDER}'"
+				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MOVIESECTION}' --directory '${MEDIAFOLDER}'"
 			;;
 			*/Music/*)
 				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section 3 --directory '${MEDIAFOLDER}'"
+				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${MUSICSECTION}' --directory '${MEDIAFOLDER}'"
 			;;
 			*/Photos/*)
 				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER."
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section 7 --directory '${MEDIAFOLDER}'"
+				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${PHOTOSECTION}' --directory '${MEDIAFOLDER}'"
 			;;
 			*/Television/*)
 				log "EXECUTE Plex Media Scanner for folder $MEDIAFOLDER"
-				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section 2 --directory '${MEDIAFOLDER}'"
+				docker exec -d plex /bin/bash -c "$plex_media_scanner_cmd --scan --refresh --section '${TVSECTION}' --directory '${MEDIAFOLDER}'"
 			;;
 			*)
 				log "Skip scanning folder $MEDIAFOLDER"
@@ -99,10 +101,7 @@ if [[ -n $LOCALFILES ]]; then
 		fi
 	done
 
-fi
-
-SECTION="UPLD"
-if [ -f ${HOME}/.cache/$TIMESTAMP-files-from.list ]; then
+	SECTION="UPLD"
 	rclone move "$dlpath/move/" "$ver:/" \
 	--config /opt/appdata/plexguide/rclone.conf \
 	--log-file=/var/plexguide/logs/pgmove.log \

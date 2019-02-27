@@ -13,7 +13,6 @@ dlpath=$(cat /var/plexguide/server.hd.path)
 ver=$(cat /var/plexguide/rclone/deploy.version)
 . "$dlpath/gcrypt/.config/cloud/pgcloud.conf"
 . "$dlpath/gcrypt/.config/bin/pgcloud.sh"
-library_root="/home/plex/media"
 sleep 10
 
 while true
@@ -60,26 +59,31 @@ if [[ -n $LOCALFILES ]]; then
         do
                 LOCALFILESHORTNAME="$(echo "$LOCALFILE" | sed -e s@$dlpath/move/@@)"
                 echo "$LOCALFILESHORTNAME" >> ${HOME}/.cache/$TIMESTAMP-files-from.list
-                log "Adding ""$library_root/$(dirname "$LOCALFILESHORTNAME")"" to scanner array"
-                MEDIAFOLDERS+=("$library_root/$(dirname "$LOCALFILESHORTNAME")")
+                log "Adding ""$mediadir/$(dirname "$LOCALFILESHORTNAME")"" to scanner array"
+                MEDIAFOLDERS+=("$mediadir/$(dirname "$LOCALFILESHORTNAME")")
         done
         readarray -t MEDIAFOLDERS < <(printf "%s\n" "${MEDIAFOLDERS[@]}" | sort -u)
         log "${#MEDIAFOLDERS[@]} Unique folder/s found for Plex Media Scanner"
         for MEDIAFOLDER in "${MEDIAFOLDERS[@]}"
         do
                 log "Start Plex Media Scanner for folder: $MEDIAFOLDER"
-		libraryfolder=$(echo $(echo $MEDIAFOLDER | sed -e s@$library_root/@@) | cut -d '/' -f 1)
-		section_varname="${libraryfolder}SECTION"
-                if [[ -d "$(echo $MEDIAFOLDER | sed -e s@$library_root@$libraryroot@)" ]] && [[ -n ${!section_varname} ]]; then
-                        docker exec -i plex /usr/lib/plexmediaserver/Plex\ Media\ Scanner --scan --refresh --section "${!section_varname}" --directory "$MEDIAFOLDER"
+		libraryfolder=$(echo $(echo $MEDIAFOLDER | sed -e s@$mediadir/@@) | cut -d '/' -f 1)
+		libraryfolder_nospaces=$(echo "$libraryfolder" | sed -e 's/ //g')
+		section_varname="${libraryfolder_nospaces}SECTION"
+                if [[ -d "$(echo $MEDIAFOLDER | sed -e s@$mediadir/@$libraryroot/@)" ]] && [[ -n ${!section_varname} ]]; then
+                        docker exec -u 1000:1000 \
+                        -e LD_LIBRARY_PATH=/usr/lib/plexmediaserver/lib \
+			-e PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR=/config/Library/Application\ Support \
+			-i plex /usr/lib/plexmediaserver/Plex\ Media\ Scanner \
+			--scan --refresh --section "${!section_varname}" --directory "$MEDIAFOLDER"
 	                if [[ $? -eq 0 ]]; then
         	                log "SUCCESS: Plex Media Scanner successful for media folder $MEDIAFOLDER"
 			else
                         	log "ERROR: Error executing Plex Media Scanner ERROR: $?"
 			fi
-		elif [[ -z ${!section_name} ]]; then
+		elif [[ -z ${!section_varname} ]]; then
 			log "SKIP: No existing Plex Media Library Section found for media folder $MEDIAFOLDER"
-                elif [[ ! -d "$(echo $MEDIAFOLDER | sed -e s@$library_root@$libraryroot@)" ]]; then
+                elif [[ ! -d "$(echo $MEDIAFOLDER | sed -e s@$mediadir@$libraryroot@)" ]]; then
 			log "SKIP: Plex Media Library folder $MEDIAFOLDER not found for scanner"
                 fi
         done
@@ -103,6 +107,8 @@ if [[ -n $LOCALFILES ]]; then
         fi
         cat ${HOME}/.cache/*.list > $dlpath/gcrypt/.cache/$TIMESTAMP-files-to.list
         rm ${HOME}/.cache/*.list
+	# CLEANUP WEEK OLD LIST FILES
+	find "$dlpath/gcrypt/.cache/" -type f -mtime +7 -name '*.list' -execdir rm -- '{}' \;
 fi
 
 SECTION="PLEX CLEANUP"

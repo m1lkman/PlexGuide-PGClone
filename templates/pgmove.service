@@ -7,12 +7,16 @@
 ################################################################################
 [Unit]
 Description=Move Service Daemon
-After=multi-user.target
+After=multi-user.target gcrypt.service
+Requires=gcrypt.service
+PartOf=gcrypt.service
 
 [Service]
 Type=simple
 User=0
 Group=0
+# poll gcrypt directory and wait to startup until directory exists
+ExecStartPre=/bin/bash -c 'while [ ! -d /mnt/gcrypt/.config ]; do /usr/bin/sleep 5; done'
 ExecStart=/bin/bash /opt/appdata/plexguide/pgmove.sh
 TimeoutStopSec=20
 KillMode=process

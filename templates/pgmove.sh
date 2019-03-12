@@ -98,7 +98,7 @@ if [[ -n $LOCALFILES ]]; then
                 --scan --refresh --section "${!section_varname}" --directory "$MEDIAFOLDER"
                 if [[ $? -eq 0 ]]; then
                     log "SUCCESS: Plex Media Scanner successful for media folder $MEDIAFOLDER"
-                    slack_message "Upload Completed to Cloud Drive" "" "" "${#UPLOADFILES[@]} file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" $thread_ts
+                    slack_message "Upload Completed to Cloud Drive" "" "" "${#UPLOADFILES[@]} file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" ""
                 else
                     log "ERROR: Error executing Plex Media Scanner ERROR: $?"
                 fi
@@ -129,7 +129,7 @@ if [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]]; then
         log "SUCCESS: rclone move to $ver:"
         cat ${HOME}/.cache/*.list > $dlpath/gcrypt/.cache/$TIMESTAMP-files-to.list
         rm ${HOME}/.cache/*.list
-        json=$(slack_message "Rclone move completed to Google Drive ($ver:)" "" "" "$FILECOUNT file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" $thread_ts)
+        json=$(slack_message "Rclone move completed to Google Drive ($ver:)" "" "" "$FILECOUNT file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" "")
         thread_ts=$(echo $json | python -c 'import sys, json; print json.load(sys.stdin)["message"]["ts"]')
         slack_upload "${HOME}/.cache/$TIMESTAMP-files-from.list" "$TIMESTAMP-files-from.list" "List File Contents" "$HOSTNAME" $thread_ts
     else

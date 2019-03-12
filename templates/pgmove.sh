@@ -21,98 +21,123 @@ STARTLOOP=$(date)
 TIMESTAMP=`date +%Y-%m-%d_%H-%M-%S`
 SECTION="MOVETO"
 dlpath=$(cat /var/plexguide/server.hd.path)
+
 ## Sync, Sleep 2 Minutes, Repeat. BWLIMIT 9 Prevents Google 750GB Google Upload Ban
-rclone moveto "$dlpath/downloads/" "$dlpath/move/" \
---config /opt/appdata/plexguide/rclone.conf \
---log-file=/var/plexguide/logs/pgmove.log \
---log-level INFO --stats 5s \
---min-age=2m \
---exclude="**_HIDDEN~" --exclude=".unionfs/**" \
---exclude='**partial~' --exclude=".unionfs-fuse/**" \
---exclude="**sabnzbd**" --exclude="**nzbget**" \
---exclude="**qbittorrent**" --exclude="**rutorrent**" \
---exclude="**deluge**" --exclude="**transmission**" \
---exclude="**jdownloader**" --exclude="**makemkv**" \
---exclude="**handbrake**" --exclude="**bazarr**" \
---exclude="**ignore**"  --exclude="**inProgress**" \
---exclude=".*"
-if [[ $? -eq 0 ]]; then
+
+find "$dlpath/downloads/" -mindepth 1 -type f \
+-cmin +0.233 -not -newerct "$STARTLOOP" \
+-not -iname '*_HIDDEN~' -not -iname '*unionfs*' \
+-not -iname '*.partial~' -not -iname '*unionfs-fuse*' \
+-not -iname '.*' \
+-not -path '*/sabnzbd/*' -not -path '*/nzbget/*' \
+-not -path '*/qbittorrent/*' -not -path '*/rutorrent/*' \
+-not -path '*/deluge/*' -not -path '*/transmission/*' \
+-not -path '*/jdownloader/*' -not -path '*/makemkv/*' \
+-not -path '*/handbrake/*' -not -path '*/bazarr/*' \
+-not -path '*ignore*'  -not -path '*inProgress*' \
+> ${HOME}/.cache/$TIMESTAMP-files-from.list
+
+if [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]]; then
+    sed -i "s@$dlpath/downloads/@@g" ${HOME}/.cache/$TIMESTAMP-files-from.list
+    rclone moveto "$dlpath/downloads/" "$dlpath/move/" \
+    --config /opt/appdata/plexguide/rclone.conf \
+    --log-file=/var/plexguide/logs/pgmove.log \
+    --log-level INFO --stats 5s --stats-file-name-length 0 \
+    --files-from=${HOME}/.cache/$TIMESTAMP-files-from.list
+    if [[ $? -eq 0 ]]; then
         log "SUCCESS: rclone moveto to $dlpath/move/"
-else
+    else
         log "ERROR: rclone moveto to $dlpath/move/ failed: $?"
+    fi
+else
+    log "No files found for move"
 fi
 
-SECTION="PLEX MEDIA SCANNER"
+if [[ -d "/opt/plexguide/plex" ]]; then
 
-while [ $(docker inspect -f '{{.State.Running}}' plex) = "false" ]; do
-	log "Plex Container Not Running, sleeping 10 minutes"
-	sleep 10m
-done
-log "Plex Container Running"
+    SECTION="PLEX MEDIA SCANNER"
+
+    while [ $(docker inspect -f '{{.State.Running}}' plex) = "false" ]; do
+        log "Plex Container Not Running, sleeping 10 minutes"
+        sleep 10m
+    done
+    log "Plex Container Running"
+fi
 
 readarray -t LOCALFILES < <(find "$dlpath/move/" -mindepth 1 -type f -cmin +0.233 -not -newerct "$STARTLOOP" -not -iname '*.partial~' -not -iname '*_HIDDEN~' -not -iname '*.QTFS' -not -iname '*unionfs-.fuse*' -not -iname '*unionfs*' -not -iname '*.DS_STORE')
-if [[ -n $LOCALFILES ]]; then
-        log "${#LOCALFILES[@]} local file/s found for Plex Media Scanner"
-        # Create empty array
-        MEDIAFOLDERS=()
-        for LOCALFILE in "${LOCALFILES[@]}" #Populate array with paths to plex library folders
-        do
-                LOCALFILESHORTNAME="$(echo "$LOCALFILE" | sed -e s@$dlpath/move/@@)"
-                echo "$LOCALFILESHORTNAME" >> ${HOME}/.cache/$TIMESTAMP-files-from.list
-                log "Adding ""$mediadir/$(dirname "$LOCALFILESHORTNAME")"" to scanner array"
-                MEDIAFOLDERS+=("$mediadir/$(dirname "$LOCALFILESHORTNAME")")
-        done
-        readarray -t MEDIAFOLDERS < <(printf "%s\n" "${MEDIAFOLDERS[@]}" | sort -u)
+if [[ -n $LOCALFILES ]] || [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]]; then
+
+    if [[ -d "/opt/plexguide/plex" ]]; then log "${#LOCALFILES[@]} local file/s found for Plex Media Scanner"; fi
+    # Create empty array
+    MEDIAFOLDERS=()
+    for LOCALFILE in "${LOCALFILES[@]}" #Populate array with paths to plex library folders
+    do
+            LOCALFILESHORTNAME="$(echo "$LOCALFILE" | sed -e s@$dlpath/move/@@)"
+            echo "$LOCALFILESHORTNAME" >> ${HOME}/.cache/$TIMESTAMP-files-from.list
+            log "Adding ""$mediadir/$(dirname "$LOCALFILESHORTNAME")"" to scanner array"
+            MEDIAFOLDERS+=("$mediadir/$(dirname "$LOCALFILESHORTNAME")")
+    done
+    readarray -t MEDIAFOLDERS < <(printf "%s\n" "${MEDIAFOLDERS[@]}" | sort -u)
+    if [[ -d "/opt/plexguide/plex" ]]; then
+
         log "${#MEDIAFOLDERS[@]} Unique folder/s found for Plex Media Scanner"
         for MEDIAFOLDER in "${MEDIAFOLDERS[@]}"
         do
-                log "Start Plex Media Scanner for folder: $MEDIAFOLDER"
-		libraryfolder=$(echo $(echo $MEDIAFOLDER | sed -e s@$mediadir/@@) | cut -d '/' -f 1)
-		libraryfolder_nospaces=$(echo "$libraryfolder" | sed -e 's/ //g')
-		section_varname="${libraryfolder_nospaces}SECTION"
-                if [[ -d "$(echo $MEDIAFOLDER | sed -e s@$mediadir/@$libraryroot/@)" ]] && [[ -n ${!section_varname} ]]; then
-                        docker exec -u 1000:1000 \
-                        -e LD_LIBRARY_PATH=/usr/lib/plexmediaserver/lib \
-			-e PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR=/config/Library/Application\ Support \
-			-i plex /usr/lib/plexmediaserver/Plex\ Media\ Scanner \
-			--scan --refresh --section "${!section_varname}" --directory "$MEDIAFOLDER"
-	                if [[ $? -eq 0 ]]; then
-        	                log "SUCCESS: Plex Media Scanner successful for media folder $MEDIAFOLDER"
-			else
-                        	log "ERROR: Error executing Plex Media Scanner ERROR: $?"
-			fi
-		elif [[ -z ${!section_varname} ]]; then
-			log "SKIP: No existing Plex Media Library Section found for media folder $MEDIAFOLDER"
-                elif [[ ! -d "$(echo $MEDIAFOLDER | sed -e s@$mediadir@$libraryroot@)" ]]; then
-			log "SKIP: Plex Media Library folder $MEDIAFOLDER not found for scanner"
+            log "Start Plex Media Scanner for folder: $MEDIAFOLDER"
+            libraryfolder=$(echo $(echo $MEDIAFOLDER | sed -e s@$mediadir/@@) | cut -d '/' -f 1)
+            libraryfolder_nospaces=$(echo "$libraryfolder" | sed -e 's/ //g')
+            section_varname="${libraryfolder_nospaces}SECTION"
+            if [[ -d "$(echo $MEDIAFOLDER | sed -e s@$mediadir/@$libraryroot/@)" ]] && [[ -n ${!section_varname} ]]; then
+                docker exec -u 1000:1000 \
+                -e LD_LIBRARY_PATH=/usr/lib/plexmediaserver/lib \
+                -e PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR=/config/Library/Application\ Support \
+                -i plex /usr/lib/plexmediaserver/Plex\ Media\ Scanner \
+                --scan --refresh --section "${!section_varname}" --directory "$MEDIAFOLDER"
+                if [[ $? -eq 0 ]]; then
+                    log "SUCCESS: Plex Media Scanner successful for media folder $MEDIAFOLDER"
+                    slack_message "Upload Completed to Cloud Drive" "" "" "${#UPLOADFILES[@]} file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" $thread_ts
+                else
+                    log "ERROR: Error executing Plex Media Scanner ERROR: $?"
                 fi
+            elif [[ -z ${!section_varname} ]]; then
+                    log "SKIP: No existing Plex Media Library Section found for media folder $MEDIAFOLDER"
+            elif [[ ! -d "$(echo $MEDIAFOLDER | sed -e s@$mediadir@$libraryroot@)" ]]; then
+                    log "SKIP: Plex Media Library folder $MEDIAFOLDER not found for scanner"
+            fi
         done
+    fi
 
-        SECTION="RCLONE MOVE"
-        log "Moving ${#LOCALFILES[@]} local file/s to $ver:/"
-        rclone move "$dlpath/move/" "$ver:/" \
-        --config /opt/appdata/plexguide/rclone.conf \
-        --log-file=/var/plexguide/logs/pgmove.log \
-        --log-level INFO --stats 5s \
-        --files-from=${HOME}/.cache/$TIMESTAMP-files-from.list \
-        --bwlimit 9M \
-        --tpslimit 6 \
-        --checkers=16 \
-        --max-size=300G \
-        --no-traverse
-        if [[ $? -eq 0 ]]; then
-                log "SUCCESS: rclone move to $ver:"
-        else
-                log "ERROR: rclone move to $ver: failed: $?"
-        fi
-        cat ${HOME}/.cache/*.list > $dlpath/gcrypt/.cache/$TIMESTAMP-files-to.list
-        rm ${HOME}/.cache/*.list
+    SECTION="RCLONE MOVE"
+    log "Moving ${#LOCALFILES[@]} local file/s to $ver:/"
+    RCLONESTART=$(date)
+    rclone move "$dlpath/move/" "$ver:/" \
+    --config /opt/appdata/plexguide/rclone.conf \
+    --log-file=/var/plexguide/logs/pgmove.log \
+    --log-level INFO --stats 5s --stats-file-name-length 0 \
+    --files-from=${HOME}/.cache/$TIMESTAMP-files-from.list \
+    --bwlimit 9M \
+    --tpslimit 6 \
+    --checkers=16 \
+    --max-size=300G \
+    --no-traverse
+    if [[ $? -eq 0 ]]; then
+        log "SUCCESS: rclone move to $ver:"
+        json=$(slack_message "Rclone move completed to Google Drive ($ver:)" "" "" "${#LOCALFILES[@]} file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" $thread_ts)
+        thread_ts=$(echo $json | python -c 'import sys, json; print json.load(sys.stdin)["message"]["ts"]')
+        slack_upload "${HOME}/.cache/$TIMESTAMP-files-from.list" "$TIMESTAMP-files-from.list" "List File Contents" "$HOSTNAME" $thread_ts
+    else
+            log "ERROR: rclone move to $ver: failed: $?"
+    fi
+    cat ${HOME}/.cache/*.list > $dlpath/gcrypt/.cache/$TIMESTAMP-files-to.list
+    rm ${HOME}/.cache/*.list
 	# CLEANUP WEEK OLD LIST FILES
 	find "$dlpath/gcrypt/.cache/" -type f -mtime +7 -name '*.list' -execdir rm -- '{}' \;
 fi
 
-SECTION="PLEX CLEANUP"
-plex_cleanup
+if [[ -d "/opt/plexguide/plex" ]]; then
+    SECTION="PLEX CLEANUP"  
+    plex_cleanup
+fi
 
 log "Sleeping for 2 mins"
 sleep 2m

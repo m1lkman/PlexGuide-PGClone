@@ -13,6 +13,7 @@ dlpath=$(cat /var/plexguide/server.hd.path)
 ver=$(cat /var/plexguide/rclone/deploy.version)
 . "$dlpath/gcrypt/.config/cloud/pgcloud.conf"
 . "$dlpath/gcrypt/.config/bin/pgcloud.sh"
+if [[ ! -e "${HOME}/.cache" ]]; then mkdir -p "${HOME}/.cache"; fi
 sleep 10
 
 while true
@@ -50,7 +51,8 @@ if [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]]; then
         log "ERROR: rclone moveto to $dlpath/move/ failed: $?"
     fi
 else
-    log "No files found for move"
+    log "No files found for local moveto"
+    rm ${HOME}/.cache/$TIMESTAMP-files-from.list
 fi
 
 if [[ -d "/opt/plexguide/plex" ]]; then
@@ -64,8 +66,9 @@ if [[ -d "/opt/plexguide/plex" ]]; then
     log "Plex Container Running"
 fi
 
+SECTION="RCLONE MOVE"
 readarray -t LOCALFILES < <(find "$dlpath/move/" -mindepth 1 -type f -cmin +0.233 -not -newerct "$STARTLOOP" -not -iname '*.partial~' -not -iname '*_HIDDEN~' -not -iname '*.QTFS' -not -iname '*unionfs-.fuse*' -not -iname '*unionfs*' -not -iname '*.DS_STORE')
-if [[ -n $LOCALFILES ]] || [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]]; then
+if [[ -n $LOCALFILES ]]; then
 
     if [[ -d "/opt/plexguide/plex" ]]; then log "${#LOCALFILES[@]} local file/s found for Plex Media Scanner"; fi
     # Create empty array
@@ -106,9 +109,11 @@ if [[ -n $LOCALFILES ]] || [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]];
             fi
         done
     fi
+fi
 
-    SECTION="RCLONE MOVE"
-    log "Moving ${#LOCALFILES[@]} local file/s to $ver:/"
+if [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]]; then
+    FILECOUNT=$(wc -l "${HOME}/.cache/$TIMESTAMP-files-from.list" | awk '{ print $1 }')
+    log "Moving $FILECOUNT local file/s to $ver:/"
     RCLONESTART=$(date)
     rclone move "$dlpath/move/" "$ver:/" \
     --config /opt/appdata/plexguide/rclone.conf \
@@ -122,16 +127,16 @@ if [[ -n $LOCALFILES ]] || [[ -s "${HOME}/.cache/$TIMESTAMP-files-from.list" ]];
     --no-traverse
     if [[ $? -eq 0 ]]; then
         log "SUCCESS: rclone move to $ver:"
-        json=$(slack_message "Rclone move completed to Google Drive ($ver:)" "" "" "${#LOCALFILES[@]} file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" $thread_ts)
+        cat ${HOME}/.cache/*.list > $dlpath/gcrypt/.cache/$TIMESTAMP-files-to.list
+        rm ${HOME}/.cache/*.list
+        json=$(slack_message "Rclone move completed to Google Drive ($ver:)" "" "" "$FILECOUNT file/s uploaded in $(printf '%dh:%dm:%ds\n' $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))/3600)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%3600/60)) $(($(($(date +'%s') - $(date -d "$RCLONESTART" +'%s')))%60)))" "$HOSTNAME" "" "$SCRIPTNAME" $thread_ts)
         thread_ts=$(echo $json | python -c 'import sys, json; print json.load(sys.stdin)["message"]["ts"]')
         slack_upload "${HOME}/.cache/$TIMESTAMP-files-from.list" "$TIMESTAMP-files-from.list" "List File Contents" "$HOSTNAME" $thread_ts
     else
             log "ERROR: rclone move to $ver: failed: $?"
     fi
-    cat ${HOME}/.cache/*.list > $dlpath/gcrypt/.cache/$TIMESTAMP-files-to.list
-    rm ${HOME}/.cache/*.list
-	# CLEANUP WEEK OLD LIST FILES
-	find "$dlpath/gcrypt/.cache/" -type f -mtime +7 -name '*.list' -execdir rm -- '{}' \;
+else
+    log "No local files found for Rclone to move"
 fi
 
 if [[ -d "/opt/plexguide/plex" ]]; then
@@ -146,4 +151,7 @@ sleep 2m
 find "$dlpath/downloads" -mindepth 2 -mmin +5 -type d -empty -delete
 find "$dlpath/downloads" -mindepth 3 -mmin +360 -type d -size -100M -delete
 find "$dlpath/move" -mindepth 2 -mmin +5 -type d -empty -delete
+# CLEANUP WEEK OLD LIST FILES FROM CLOUD CACHE
+find "$dlpath/gcrypt/.cache/" -type f -mtime +7 -name '*.list' -delete
+
 done
